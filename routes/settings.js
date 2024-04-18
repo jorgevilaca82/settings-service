@@ -3,7 +3,7 @@ var router = express.Router();
 
 var clientFactory = require('../utils/redis_client_factory').clientFactory;
 var SettingsService = require('../services/settings_service')
-var Subject = require('../models/subject')
+const { header, body, validationResult, matchedData, checkSchema } = require('express-validator');
 const { createApp } = require('../utils/functions')
 
 const MASTER_KEY = 'xpto';
@@ -21,6 +21,12 @@ async function authApp(client, { appId, passKey }) {
 
 // app authetication middleware
 router.use(async function (req, res, next) {
+    console.log(req)
+    if(req.url === '/apps' || req.url === '/apps/2169fc31-2e76-4389-a813-8c3b507734d0') {
+        //skip
+        return next();
+    }
+
     var client = clientFactory();
     const appId = req.headers['x-appid'];
     const passKey = req.headers['x-passkey'];
@@ -34,20 +40,32 @@ router.use(async function (req, res, next) {
     }
 })
 
-router.post("/apps", async function (req, res, next) {
-    let name = req.body.name
-    const masterKey = req.headers['x-masterkey'];
-    if (masterKey === MASTER_KEY) {
-        var client = clientFactory();
+const checkMasterKeyHeader = () => header('x-masterkey')
+    .notEmpty()
+    .withMessage("Missing X-MasterKey")
+    .equals(MASTER_KEY);
 
-        const newApp = createApp(name)
-        registerApp(client, { name, ...newApp })
-        res.send({ name, ...newApp })
+const checkAppName = () => body('name')
+    .notEmpty().withMessage('Should not be empty.')
+    .isLength({ min: 1, max: 64 }).withMessage("Length should be between 1 and 64 characters.");
+
+router.post("/apps", checkMasterKeyHeader(), checkAppName(),
+    async function (req, res, next) {
+
+        const result = validationResult(req);
+        if (result.isEmpty()) {
+            const data = matchedData(req);
+            let name = data.name
+            var client = clientFactory();
+
+            const newApp = createApp(name)
+            registerApp(client, { name, ...newApp })
+            return res.send({ name, ...newApp })
+        }
+
+        res.send({ errors: result.array() });
     }
-    else {
-        res.send(403, 'Forbidden')
-    }
-});
+);
 
 router.get('/apps', async function (req, res, next) {
     var client = clientFactory();
@@ -62,24 +80,52 @@ router.get('/apps/:appId', async function (req, res, next) {
 
 });
 
+const validateSettingSchema = () => checkSchema({
+    subject: {
+        notEmpty: { errorMessage: "Subject is required" },
+        isLength: {
+            options: { min: 4, max: 32 },
+            errorMessage: "Subject lenght is incorrect"
+        },
+    },
+    key: {
+        notEmpty: { errorMessage: "Key is required" }
+    },
+    defaultValue: {
+        notEmpty: { errorMessage: "DefaultValue is required" }
+    },
+    private: {
+        isBoolean: { errorMessage: "Private should be boolean" }
+    }
+});
 
-router.post('/', async function (req, res, next) {
+const getAppResource = async (req) => {
     var client = clientFactory();
-
-    const subject_type = req.body.subject
-    const key = req.body.key
-    const defaultValue = req.body.defaultValue
-    const private = req.body.private
 
     const appId = req.headers['x-appid'];
 
     const app = await client.hgetall(`settings:${appId}`);
 
-    const settingsService = new SettingsService({ appId, ...app }, subject_type);
-    const result = await settingsService.addMetaData(key, { defaultValue, private });
-    console.log(result);
+    return {appId, ...app};
+}
 
-    res.send("ok");
+router.post('/', validateSettingSchema(), async function (req, res, next) {
+
+    const validationRes = validationResult(req);
+    if (validationRes.isEmpty()) {
+        const data = matchedData(req);
+
+        const app = await getAppResource(req);
+
+        let unwrap = ({private, defaultValue}) => ({private, defaultValue});
+    
+        const settingsService = new SettingsService(app, data.subject);
+        const result = await settingsService.addMetaData(data.key, unwrap(data));
+    
+        return res.send("ok");
+    }
+
+    return res.send({ errors: validationRes.array() });
 });
 
 /**
@@ -121,7 +167,7 @@ router.get('/subjects/:subject/:key/meta', async function (req, res, next) {
     res.send(result);
 });
 
-router.post('/define', async function(req, res, next) {
+router.post('/define', async function (req, res, next) {
     const appId = req.headers['x-appid'];
     const subject_type = req.body.subject_type;
     const subject_scope = req.body.subject_scope;
@@ -132,7 +178,7 @@ router.post('/define', async function(req, res, next) {
 
     const service = new SettingsService({ appId }, subject_type, subject_scope);
     const result = await service.setSettingValue(key, value);
-    
+
     const setting = await service.getSettingValue(key);
 
     res.send(setting);

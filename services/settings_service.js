@@ -30,13 +30,13 @@ class SettingsService {
     }
 
     async #addMember(key) {
-        const prefix = this.setting.getPrefix()
-        await this.client.sadd(`${prefix}:members`, key)
+        const prefix = this.setting.getSubjecMembersPrefix()
+        await this.client.sadd(prefix, key)
     }
 
     async getAllExistentSettingKeys() {
-        const prefix = this.setting.getPrefix()
-        return await this.client.smembers(`${prefix}:members`)
+        const prefix = this.setting.getSubjecMembersPrefix()
+        return await this.client.smembers(prefix)
     }
 
     async setSettingValue(key, value) {

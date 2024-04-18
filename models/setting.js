@@ -24,6 +24,11 @@ class Setting {
 
     }
 
+    getSubjecMembersPrefix() {
+        return [this.getAppPrefix(), this.subject.getType(), "__members__"].join(":")
+
+    }
+
     getKey(suffix) {
         if(this.subject.getScope() === null) {
             throw new Error("Cannot get key from an uscoped setting.")
