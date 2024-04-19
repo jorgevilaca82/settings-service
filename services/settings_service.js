@@ -12,7 +12,6 @@ class SettingsService {
 
     }
 
-
     #addSubject(subject) {
         this.client.sadd(`${this.setting.getAppPrefix()}:__subjects__`, subject)
     }
@@ -69,8 +68,8 @@ class SettingsService {
         for (const key in allMembers) {
             let settingKey = allMembers[key]
             if (!allSettings.hasOwnProperty(settingKey)) {
-                const meta = await this.getAllMetaData(settingKey)
-                missing[settingKey] = meta["defaultValue"]
+                const { defaultValue } = await this.getKeyMetaData(settingKey)
+                missing[settingKey] = defaultValue
             }
         }
 
