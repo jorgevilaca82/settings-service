@@ -1,4 +1,4 @@
-const { header, body, validationResult, matchedData, checkSchema } = require('express-validator');
+const { checkSchema } = require('express-validator');
 
 const validateSettingMetadata = () =>
     checkSchema({
